@@ -613,6 +613,24 @@ static struct clk_synth cdce913_data = {
  */
 int board_init(void)
 {
+	u32 sys_reboot;
+
+	sys_reboot = readl(PRM_RSTST);
+	if (sys_reboot & (1 << 9))
+		puts("Reset Source: IcePick reset has occurred.\n");
+
+	if (sys_reboot & (1 << 5))
+		puts("Reset Source: Global external warm reset has occurred.\n");
+
+	if (sys_reboot & (1 << 4))
+		puts("Reset Source: watchdog reset has occurred.\n");
+
+	if (sys_reboot & (1 << 1))
+		puts("Reset Source: Global warm SW reset has occurred.\n");
+
+	if (sys_reboot & (1 << 0))
+		puts("Reset Source: Power-on reset has occurred.\n");
+
 #if defined(CONFIG_HW_WATCHDOG)
 	hw_watchdog_init();
 #endif
@@ -709,17 +727,15 @@ int board_late_init(void)
 	char *name = NULL;
 
 	if (board_is_bone_lt()) {
-		/* BeagleBoard.org BeagleBone Black Wireless: */
-		if (!strncmp(board_ti_get_rev(), "BWA", 3)) {
+		puts("Board: BeagleBone Black\n");
+		name = "A335BNLT";
+		if (!strncmp(board_ti_get_rev(), "BW", 2)) {
+			puts("Model: BeagleBone Black Wireless\n");
 			name = "BBBW";
 		}
-		/* SeeedStudio BeagleBone Green Wireless */
-		if (!strncmp(board_ti_get_rev(), "GW1", 3)) {
-			name = "BBGW";
-		}
-		/* BeagleBoard.org BeagleBone Blue */
-		if (!strncmp(board_ti_get_rev(), "BLA", 3)) {
-			name = "BBBL";
+		if (!strncmp(board_ti_get_rev(), "SE", 2)) {
+			puts("Model: SanCloud BeagleBone Enhanced\n");
+			name = "SBBE";
 		}
 	}
 
@@ -731,8 +747,9 @@ int board_late_init(void)
 	 * Default FIT boot on HS devices. Non FIT images are not allowed
 	 * on HS devices.
 	 */
-	if (get_device_type() == HS_DEVICE)
+	if (get_device_type() == HS_DEVICE) {
 		env_set("boot_fit", "1");
+        }
 #endif
 
 #if !defined(CONFIG_SPL_BUILD)
@@ -847,7 +864,7 @@ int board_eth_init(bd_t *bis)
 {
 	int rv, n = 0;
 #if defined(CONFIG_USB_ETHER) && \
-	(!defined(CONFIG_SPL_BUILD) || defined(CONFIG_SPL_USB_ETHER))
+	(!defined(CONFIG_SPL_BUILD) || defined(CONFIG_SPL_USBETH_SUPPORT))
 	uint8_t mac_addr[6];
 	uint32_t mac_hi, mac_lo;
 
@@ -870,18 +887,24 @@ int board_eth_init(bd_t *bis)
 	(defined(CONFIG_SPL_ETH_SUPPORT) && defined(CONFIG_SPL_BUILD))
 
 #ifdef CONFIG_DRIVER_TI_CPSW
-	if (board_is_bone() || board_is_bone_lt() ||
+	if (read_eeprom() < 0)
+		puts("Could not get board ID.\n");
+
+	if (board_is_bone() || (board_is_bone_lt() && !board_is_bone_lt_enhanced() && !board_is_m10a()) ||
 	    board_is_idk()) {
+		puts("eth0: MII MODE\n");
 		writel(MII_MODE_ENABLE, &cdev->miisel);
 		cpsw_slaves[0].phy_if = cpsw_slaves[1].phy_if =
 				PHY_INTERFACE_MODE_MII;
 	} else if (board_is_icev2()) {
+		puts("eth0: icev2: RGMII MODE\n");
 		writel(RMII_MODE_ENABLE | RMII_CHIPCKL_ENABLE, &cdev->miisel);
 		cpsw_slaves[0].phy_if = PHY_INTERFACE_MODE_RMII;
 		cpsw_slaves[1].phy_if = PHY_INTERFACE_MODE_RMII;
 		cpsw_slaves[0].phy_addr = 1;
 		cpsw_slaves[1].phy_addr = 3;
 	} else {
+		puts("eth0: RGMII MODE\n");
 		writel((RGMII_MODE_ENABLE | RGMII_INT_DELAY), &cdev->miisel);
 		cpsw_slaves[0].phy_if = cpsw_slaves[1].phy_if =
 				PHY_INTERFACE_MODE_RGMII;
@@ -906,7 +929,7 @@ int board_eth_init(bd_t *bis)
 #define AR8051_DEBUG_RGMII_CLK_DLY_REG	0x5
 #define AR8051_RGMII_TX_CLK_DLY		0x100
 
-	if (board_is_evm_sk() || board_is_gp_evm()) {
+	if (board_is_evm_sk() || board_is_gp_evm() || board_is_bone_lt_enhanced() || board_is_m10a()) {
 		const char *devname;
 		devname = miiphy_get_current_dev();
 
@@ -917,7 +940,7 @@ int board_eth_init(bd_t *bis)
 	}
 #endif
 #if defined(CONFIG_USB_ETHER) && \
-	(!defined(CONFIG_SPL_BUILD) || defined(CONFIG_SPL_USB_ETHER))
+	(!defined(CONFIG_SPL_BUILD) || defined(CONFIG_SPL_USBETH_SUPPORT))
 	if (is_valid_ethaddr(mac_addr))
 		eth_env_set_enetaddr("usbnet_devaddr", mac_addr);
 
@@ -936,19 +959,17 @@ int board_eth_init(bd_t *bis)
 #ifdef CONFIG_SPL_LOAD_FIT
 int board_fit_config_name_match(const char *name)
 {
-	if (board_is_gp_evm() && !strcmp(name, "am335x-evm"))
-		return 0;
-	else if (board_is_bone() && !strcmp(name, "am335x-bone"))
+	if (board_is_bone() && !strcmp(name, "am335x-bone"))
 		return 0;
 	else if (board_is_bone_lt() && !strcmp(name, "am335x-boneblack"))
 		return 0;
-	else if (board_is_pb() && !strcmp(name, "am335x-pocketbeagle"))
+	else if (board_is_bbbw() && !strcmp(name, "am335x-boneblack"))
 		return 0;
-	else if (board_is_evm_sk() && !strcmp(name, "am335x-evmsk"))
+	else if (board_is_m10a() && !strcmp(name, "am335x-vsc8531bbb"))
+		return 0;
+	else if (board_is_bone_lt_enhanced() && !strcmp(name, "am335x-sancloud-bbe"))
 		return 0;
 	else if (board_is_bbg1() && !strcmp(name, "am335x-bonegreen"))
-		return 0;
-	else if (board_is_icev2() && !strcmp(name, "am335x-icev2"))
 		return 0;
 	else
 		return -1;

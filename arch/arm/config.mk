@@ -48,7 +48,7 @@ endif
 
 # Only test once
 ifeq ($(CONFIG_$(SPL_)SYS_THUMB_BUILD),y)
-archprepare: checkthumb checkgcc6
+#archprepare: checkthumb checkgcc6
 
 checkthumb:
 	@if test "$(call cc-name)" = "gcc" -a \

@@ -12,8 +12,8 @@
 #include "am335x-bone-common_mii.dtsi"
 
 / {
-	model = "TI AM335x BeagleBone";
-	compatible = "ti,am335x-bone", "ti,am33xx";
+	model = "TI AM335x BeagleBone Black";
+	compatible = "ti,am335x-bone-black", "ti,am335x-bone", "ti,am33xx";
 	chosen {
 		stdout-path = &uart0;
 		tick-timer = &timer2;
@@ -22,10 +22,22 @@
 
 &ldo3_reg {
 	regulator-min-microvolt = <1800000>;
-	regulator-max-microvolt = <3300000>;
+	regulator-max-microvolt = <1800000>;
 	regulator-always-on;
 };
 
 &mmc1 {
-	vmmc-supply = <&ldo3_reg>;
+	vmmc-supply = <&vmmcsd_fixed>;
+};
+
+&mmc2 {
+	vmmc-supply = <&vmmcsd_fixed>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&emmc_pins>;
+	bus-width = <8>;
+	status = "okay";
+};
+
+&rtc {
+	system-power-controller;
 };

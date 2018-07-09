@@ -17,15 +17,16 @@
 #define __CONFIG_AM335X_EVM_H
 
 #include <configs/ti_am335x_common.h>
-#include <linux/sizes.h>
+#define CONFIG_ENV_IS_NOWHERE
 
 #ifndef CONFIG_SPL_BUILD
 # define CONFIG_TIMESTAMP
 #endif
 
-#define CONFIG_SYS_BOOTM_LEN		SZ_16M
+#define CONFIG_SYS_BOOTM_LEN		(32 << 20)
 
-#define CONFIG_MACH_TYPE		MACH_TYPE_AM335XEVM
+#define MACH_TYPE_TIAM335EVM		3589	/* Until the next sync */
+#define CONFIG_MACH_TYPE		MACH_TYPE_TIAM335EVM
 
 /* Clock Defines */
 #define V_OSCK				24000000  /* Clock output from T2 */
@@ -58,9 +59,14 @@
 
 #define BOOTENV_DEV_LEGACY_MMC(devtypeu, devtypel, instance) \
 	"bootcmd_" #devtypel #instance "=" \
+	"gpio clear 56; " \
+	"gpio clear 55; " \
+	"gpio clear 54; " \
+	"gpio set 53; " \
+	"setenv interface mmc; " \
 	"setenv mmcdev " #instance"; "\
-	"setenv bootpart " #instance":2 ; "\
-	"run mmcboot\0"
+	"setenv bootpart " #instance":1 ; "\
+	"run boot\0"
 
 #define BOOTENV_DEV_NAME_LEGACY_MMC(devtypeu, devtypel, instance) \
 	#devtypel #instance " "
@@ -89,9 +95,8 @@
 	func(LEGACY_MMC, legacy_mmc, 0) \
 	func(MMC, mmc, 1) \
 	func(LEGACY_MMC, legacy_mmc, 1) \
-	func(NAND, nand, 0) \
-	BOOT_TARGET_PXE(func) \
-	BOOT_TARGET_DHCP(func)
+	func(PXE, pxe, na) \
+	func(DHCP, dhcp, na)
 
 #include <config_distro_bootcmd.h>
 
@@ -129,7 +134,34 @@
 		"${optargs} " \
 		"root=${ramroot} " \
 		"rootfstype=${ramrootfstype}\0" \
-	"loadramdisk=load mmc ${mmcdev} ${rdaddr} ramdisk.gz\0" \
+	"loadramdisk=load ${interface} ${mmcdev} ${rdaddr} ramdisk.gz\0" \
+	"loadimage=load ${interface} ${bootpart} ${loadaddr} ${bootdir}/${bootfile}\0" \
+	"loadrd=load ${interface} ${bootpart} ${rdaddr} ${bootdir}/${rdfile}; setenv rdsize ${filesize}\0" \
+	"loadfdt=echo loading ${fdtdir}/${fdtfile} ...; load ${interface} ${bootpart} ${fdtaddr} ${fdtdir}/${fdtfile}\0" \
+	"failumsboot=echo; echo FAILSAFE: U-Boot UMS (USB Mass Storage) enabled, media now available over the usb slave port ...; " \
+		"ums 0 ${interface} 1;\0" \
+	"mmcloados=run args_mmc; " \
+		"if test ${boot_fdt} = yes || test ${boot_fdt} = try; then " \
+			"if run loadfdt; then " \
+				"bootz ${loadaddr} - ${fdtaddr}; " \
+			"else " \
+				"if test ${boot_fdt} = try; then " \
+					"bootz; " \
+				"else " \
+					"echo WARN: Cannot load the DT; " \
+				"fi; " \
+			"fi; " \
+		"else " \
+			"bootz; " \
+		"fi;\0" \
+	"mmcboot=${interface} dev ${mmcdev}; " \
+		"if ${interface} rescan; then " \
+			"echo SD/MMC found on device ${mmcdev};" \
+			"run envboot; " \
+			"if run loadimage; then " \
+				"run mmcloados;" \
+			"fi;" \
+		"fi;\0" \
 	"spiboot=echo Booting from spi ...; " \
 		"run spiargs; " \
 		"sf probe ${spibusno}:0; " \
@@ -139,20 +171,39 @@
 		"run ramargs; " \
 		"bootz ${loadaddr} ${rdaddr} ${fdtaddr}\0" \
 	"findfdt="\
+		"echo board_name=[$board_name] ...; " \
 		"if test $board_name = A335BONE; then " \
-			"setenv fdtfile am335x-bone.dtb; fi; " \
+			"setenv fdtfile am335x-bone.dtb; setenv fdtbase am335x-bone; fi; " \
 		"if test $board_name = A335BNLT; then " \
-			"setenv fdtfile am335x-boneblack.dtb; fi; " \
-		"if test $board_name = A335PBGL; then " \
-			"setenv fdtfile am335x-pocketbeagle.dtb; fi; " \
-		"if test $board_name = BBBW; then " \
-			"setenv fdtfile am335x-boneblack-wireless.dtb; fi; " \
+			"echo board_rev=[$board_rev] ...; " \
+			"if test $board_rev = GH01; then " \
+				"setenv fdtfile am335x-boneblack.dtb; setenv fdtbase am335x-boneblack; " \
+			"elif test $board_rev = BLA0; then " \
+				"setenv fdtfile am335x-boneblue.dtb; setenv fdtbase am335x-boneblue; " \
+			"elif test $board_rev = BBG1; then " \
+				"setenv fdtfile am335x-bonegreen.dtb; setenv fdtbase am335x-bonegreen; " \
+			"elif test $board_rev = GW1A; then " \
+				"setenv fdtfile am335x-bonegreen-wireless.dtb; setenv fdtbase am335x-bonegreen-wireless; " \
+			"elif test $board_rev = AIA0; then " \
+				"setenv fdtfile am335x-abbbi.dtb; setenv fdtbase am335x-abbbi; " \
+			"elif test $board_rev = EIA0; then " \
+				"setenv fdtfile am335x-boneblack.dtb; setenv fdtbase am335x-boneblack; " \
+			"elif test $board_rev = SE0A; then " \
+				"setenv fdtfile am335x-sancloud-bbe.dtb; setenv fdtbase am335x-sancloud-bbe; " \
+			"elif test $board_rev = ME06; then " \
+				"setenv fdtfile am335x-bonegreen.dtb; setenv fdtbase am335x-bonegreen; " \
+			"elif test $board_rev = M10A; then " \
+				"setenv fdtfile am335x-vsc8531bbb.dtb; setenv fdtbase am335x-vsc8531bbb; " \
+			"else " \
+				"setenv fdtfile am335x-boneblack.dtb; setenv fdtbase am335x-boneblack; " \
+			"fi; " \
+		"fi; " \
 		"if test $board_name = BBG1; then " \
-			"setenv fdtfile am335x-bonegreen.dtb; fi; " \
-		"if test $board_name = BBGW; then " \
-			"setenv fdtfile am335x-bonegreen-wireless.dtb; fi; " \
-		"if test $board_name = BBBL; then " \
-			"setenv fdtfile am335x-boneblue.dtb; fi; " \
+			"setenv fdtfile am335x-bonegreen.dtb; setenv fdtbase am335x-bonegreen; fi; " \
+		"if test $board_name = BBBW; then " \
+			"setenv fdtfile am335x-boneblack-wireless.dtb; setenv fdtbase am335x-boneblack-wireless; fi; " \
+		"if test $board_name = SBBE; then " \
+			"setenv fdtfile am335x-sancloud-bbe.dtb; setenv fdtbase am335x-sancloud-bbe; fi; " \
 		"if test $board_name = A33515BB; then " \
 			"setenv fdtfile am335x-evm.dtb; fi; " \
 		"if test $board_name = A335X_SK; then " \
@@ -160,13 +211,20 @@
 		"if test $board_name = A335_ICE; then " \
 			"setenv fdtfile am335x-icev2.dtb; fi; " \
 		"if test $fdtfile = undefined; then " \
-			"echo WARNING: Could not determine device tree to use; fi; \0" \
+			"setenv board_name A335BNLT; " \
+			"setenv board_rev EMMC; " \
+			"setenv fdtbase am335x-boneblack-emmc-overlay; " \
+			"setenv fdtfile am335x-boneblack-emmc-overlay.dtb; " \
+		"fi; \0" \
 	"init_console=" \
 		"if test $board_name = A335_ICE; then "\
 			"setenv console ttyO3,115200n8;" \
 		"else " \
 			"setenv console ttyO0,115200n8;" \
 		"fi;\0" \
+	EEWIKI_NFS \
+	EEWIKI_BOOT \
+	EEWIKI_UNAME_BOOT \
 	NANDARGS \
 	NETARGS \
 	DFUARGS \
@@ -180,6 +238,7 @@
 #define CONFIG_SYS_NS16550_COM4		0x481a6000	/* UART3 */
 #define CONFIG_SYS_NS16550_COM5		0x481a8000	/* UART4 */
 #define CONFIG_SYS_NS16550_COM6		0x481aa000	/* UART5 */
+#define CONFIG_BAUDRATE			115200
 
 #define CONFIG_ENV_EEPROM_IS_ON_I2C
 #define CONFIG_SYS_I2C_EEPROM_ADDR	0x50	/* Main EEPROM */
@@ -311,6 +370,8 @@
 #define CONFIG_PHY_SMSC
 /* Enable Atheros phy driver */
 #define CONFIG_PHY_ATHEROS
+#define CONFIG_PHY_VITESSE
+#define CONFIG_PHY_MSCC
 
 /*
  * NOR Size = 16 MiB
